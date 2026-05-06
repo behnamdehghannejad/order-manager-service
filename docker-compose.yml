@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:16
+    container_name: order-db
+    restart: always
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: management_service
+    ports:
+      - "5000:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: order-app
+    depends_on:
+      - db
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: admin
+      DB_PASSWORD: password
+      DB_NAME: management_service
+    ports:
+      - "8080:8080"
+
+volumes:
+  pgdata:

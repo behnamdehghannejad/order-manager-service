@@ -1,69 +1,61 @@
 package handler
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
+
+	"order-management-service/internal/port/inbound"
 )
 
-type Service interface {
-	GetUsers(ctx context.Context) ([]User, error)
-	GetUser(ctx context.Context, id string) (User, error)
-	CreateUser(ctx context.Context, u User) (User, error)
+type CreateOrderRequest struct {
+	UserID int64   `json:"user_id"`
+	Amount float64 `json:"amount"`
+	Status string  `json:"status"`
 }
 
-type Handler struct {
-	service Service
+type OrderHandler struct {
+	useCase inbound.OrderUseCase
 }
 
-func New(service Service) *Handler {
-	return &Handler{service: service}
+func NewOrderHandler(orderUseCase inbound.OrderUseCase) *OrderHandler {
+	return &OrderHandler{useCase: orderUseCase}
 }
 
-func (h *Handler) GetUsers(w http.ResponseWriter, r *http.Request) {
-	users, err := h.service.GetUsers(r.Context())
+func (h *OrderHandler) CreateOrder(responseWriter http.ResponseWriter, request *http.Request) {
+	defer request.Body.Close()
+
+	var req CreateOrderRequest
+
+	if err := json.NewDecoder(request.Body).Decode(&req); err != nil {
+		http.Error(responseWriter, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	order, err := h.useCase.Create(req.UserID, req.Amount, req.Status)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
+		http.Error(responseWriter, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, users)
+
+	responseWriter.WriteHeader(http.StatusCreated)
+	json.NewEncoder(responseWriter).Encode(order)
 }
 
-func (h *Handler) GetUser(w http.ResponseWriter, r *http.Request) {
-	id := r.URL.Query().Get("id")
+func (h *OrderHandler) GetOrder(w http.ResponseWriter, r *http.Request) {
 
-	user, err := h.service.GetUser(r.Context(), id)
+	id := r.PathValue("id")
+
+	if id == "" {
+		http.Error(w, "missing id", http.StatusBadRequest)
+		return
+	}
+
+	order, err := h.useCase.GetByID(id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, user)
-}
-
-func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
-	var req User
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, err)
+		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
-	user, err := h.service.CreateUser(r.Context(), req)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-
-	writeJSON(w, http.StatusCreated, user)
-}
-
-func writeJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(data)
-}
-
-func writeError(w http.ResponseWriter, status int, err error) {
-	writeJSON(w, status, map[string]string{
-		"error": err.Error(),
-	})
+	json.NewEncoder(w).Encode(order)
 }

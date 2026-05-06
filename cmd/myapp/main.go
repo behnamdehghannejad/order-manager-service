@@ -1,20 +1,55 @@
 package main
 
 import (
-	"fmt"
+	"log"
+	"net/http"
+	"order-management-service/internal/config"
+	"order-management-service/internal/handler"
+	"order-management-service/internal/infra/repository"
+	"order-management-service/internal/service"
+
+	"gorm.io/gorm"
 )
 
-//TIP <p>To run your code, right-click the code and select <b>Run</b>.</p> <p>Alternatively, click
-// the <icon src="AllIcons.Actions.Execute"/> icon in the gutter and select the <b>Run</b> menu item from here.</p>
 func main() {
-	//TIP <p>Press <shortcut actionId="ShowIntentionActions"/> when your caret is at the underlined text
-	// to see how GoLand suggests fixing the warning.</p><p>Alternatively, if available, click the lightbulb to view possible fixes.</p>
-	s := "gopher"
-	fmt.Printf("Hello and welcome, %s!\n", s)
+	db := startService()
 
-	for i := 1; i <= 5; i++ {
-		//TIP <p>To start your debugging session, right-click your code in the editor and select the Debug option.</p> <p>We have set one <icon src="AllIcons.Debugger.Db_set_breakpoint"/> breakpoint
-		// for you, but you can always add more by pressing <shortcut actionId="ToggleLineBreakpoint"/>.</p>
-		fmt.Println("i =", 100/i)
+	orderRepository := repository.NewOrderRepository(db)
+	orderService := service.NewOrderService(orderRepository)
+	orderHandler := handler.NewOrderHandler(orderService)
+
+	mux := http.NewServeMux()
+
+	handelRequests(mux, orderHandler)
+
+	http.ListenAndServe(":8080", mux)
+}
+
+func handelRequests(mux *http.ServeMux, orderHandler *handler.OrderHandler) {
+	mux.HandleFunc("POST /oms/api/orders", orderHandler.CreateOrder)
+	mux.HandleFunc("GET /oms/api/orders/{id}", orderHandler.GetOrder)
+}
+
+func startService() *gorm.DB {
+	cfg := loadConfiguration()
+	return initPostgres(cfg)
+}
+
+func loadConfiguration() *config.Config {
+	cfg, err := config.LoadConfig("config.yaml")
+	if err != nil {
+		log.Fatal(err)
 	}
+	return cfg
+}
+
+func initPostgres(cfg *config.Config) *gorm.DB {
+	db, err := config.NewPostgres(cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	db.AutoMigrate(&repository.OrderEntity{})
+
+	return db
 }
